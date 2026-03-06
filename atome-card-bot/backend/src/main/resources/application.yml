@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: atome-card-bot
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/atome_card_bot?useUnicode=true&characterEncoding=UTF-8
+    username: atome
+    password: atome123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # 改回validate，不自动删表
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+      force-request: true
+      force-response: true
+
+# External Services
+ollama:
+  base-url: http://localhost:11434
+  embed-model: bge-m3
+  probe-string: "dimension probe"
+
+milvus:
+  host: localhost
+  port: 19530
+  collection:
+    kb-chunks: kb_chunks
+    overrides: overrides
+  metric: COSINE
+
+deepseek:
+  api-key: sk-26ef3f70c62a423fa04464b2494439ba
+  base-url: https://api.deepseek.com
+  model: deepseek-chat
+
+# Bot Configuration
+bot:
+  thresholds:
+    override: 0.88
+    kb: 0.68  # 从 0.73 降低到 0.68，以捕获更多相似查询变体
+  kb-search:
+    chunk-top-k: 20
+    aggregate-limit: 3
+  sync:
+    batch-size: 32
+    chunk-size: 1000
+    chunk-overlap: 100
+
+logging:
+  level:
+    com.atome.bot: DEBUG
+    com.atome.bot.service.RouterService: DEBUG
+    io.milvus: WARN
