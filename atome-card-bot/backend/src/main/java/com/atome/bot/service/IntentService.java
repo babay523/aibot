@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 public class IntentService {
@@ -26,7 +27,7 @@ public class IntentService {
 
     /**
      * 匹配意图
-     * 按 priority 升序扫描，keywords contains 匹配
+     * 按 priority 升序扫描，keywords 支持 contains 匹配和正则匹配
      */
     public IntentMatch match(String message) {
         if (message == null || message.isEmpty()) {
@@ -39,7 +40,24 @@ public class IntentService {
         for (IntentConfig intent : intents) {
             List<String> keywords = parseKeywords(intent.getKeywordsJson());
             for (String keyword : keywords) {
-                if (lowerMessage.contains(keyword.toLowerCase())) {
+                String lowerKeyword = keyword.toLowerCase();
+                boolean matched = false;
+                
+                // 如果关键词包含特殊字符，按正则表达式匹配
+                if (lowerKeyword.contains("*") || lowerKeyword.contains("?") || lowerKeyword.contains(".")) {
+                    try {
+                        Pattern pattern = Pattern.compile(lowerKeyword, Pattern.CASE_INSENSITIVE);
+                        matched = pattern.matcher(message).find();
+                    } catch (Exception e) {
+                        // 正则表达式无效，回退到 contains 匹配
+                        matched = lowerMessage.contains(lowerKeyword);
+                    }
+                } else {
+                    // 普通 contains 匹配
+                    matched = lowerMessage.contains(lowerKeyword);
+                }
+                
+                if (matched) {
                     log.debug("Intent matched: {} with keyword: {}", intent.getName(), keyword);
                     return new IntentMatch(
                             intent.getId(),

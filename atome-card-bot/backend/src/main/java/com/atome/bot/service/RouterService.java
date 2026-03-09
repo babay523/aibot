@@ -178,8 +178,12 @@ public class RouterService {
     private OverrideResult searchOverride(String message) {
         List<Float> queryVec = ollamaClient.embed(message);
         var hit = milvusService.searchOverrideHit(queryVec);
-        if (hit == null) return null;
-
+        if (hit == null) {
+            log.info("Override search: no hit found for message '{}'", message);
+            return null;
+        }
+        log.info("Override search: found hit id={}, url={}, score={}, threshold={}", 
+                 hit.overrideId(), hit.chosenUrl(), hit.score(), overrideThreshold);
         return new OverrideResult(hit.overrideId(), hit.chosenUrl(), hit.score());
     }
 

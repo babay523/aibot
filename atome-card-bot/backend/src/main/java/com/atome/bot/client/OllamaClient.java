@@ -27,6 +27,9 @@ public class OllamaClient {
     public OllamaClient(@Value("${ollama.base-url}") String baseUrl, ObjectMapper objectMapper) {
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
+                .codecs(configurer -> configurer
+                        .defaultCodecs()
+                        .maxInMemorySize(10 * 1024 * 1024))  // 10MB buffer
                 .build();
         this.objectMapper = objectMapper;
     }
@@ -84,7 +87,16 @@ public class OllamaClient {
 
     private String toJsonArray(List<String> list) {
         return list.stream()
-                .map(s -> "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                .map(s -> {
+                    if (s == null) return "\"\"";
+                    // 处理特殊字符：先处理反斜杠，再处理引号，最后处理控制字符
+                    String escaped = s.replace("\\", "\\\\")
+                                     .replace("\"", "\\\"")
+                                     .replace("\n", "\\n")
+                                     .replace("\r", "\\r")
+                                     .replace("\t", "\\t");
+                    return "\"" + escaped + "\"";
+                })
                 .collect(Collectors.joining(",", "[", "]"));
     }
 

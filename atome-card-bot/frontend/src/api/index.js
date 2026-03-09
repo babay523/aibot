@@ -33,6 +33,8 @@ export const adminAPI = {
     const params = sourceId ? { sourceId } : {}
     return api.get('/admin/kb-articles', { params })
   },
+  createKbArticle: (data) => api.post('/admin/kb-articles', data),
+  deleteKbArticle: (id) => api.delete(`/admin/kb-articles/${id}`),
   
   // KB Sync
   syncKb: (sourceId, rebuild = true) => 
@@ -51,5 +53,6 @@ export const adminAPI = {
   
   // Overrides
   listOverrides: () => api.get('/admin/overrides'),
-  updateOverride: (id, data) => api.patch(`/admin/overrides/${id}`, data)
+  updateOverride: (id, data) => api.patch(`/admin/overrides/${id}`, data),
+  deleteOverride: (id) => api.delete(`/admin/overrides/${id}`)
 }

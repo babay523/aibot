@@ -116,7 +116,7 @@ npm run serve
 
 1. 访问前端 http://localhost:8081
 2. 进入 "知识库" 页面
-3. 点击 "同步并重建" 按钮抓取 Atome Card 帮助中心文章
+3. 点击 "同步并重建" 按钮抓取 Atome Card 帮助中心文章(暂不实现)
 4. 等待同步完成（文章数约 100+，耗时 1-3 分钟）
 5. 返回聊天页面开始对话
 
@@ -177,3 +177,7 @@ bot:
 
 - [技术架构文档](./docs/TECH_ARCHITECTURE_CN.md)
 - [功能文档](./docs/FUNCTIONAL_SPEC_CN.md)
+
+## 演示视频
+
+- [demo](./docs/demo.gif)

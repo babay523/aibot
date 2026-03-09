@@ -9,9 +9,13 @@ import com.atome.bot.repository.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -70,6 +74,25 @@ public class AdminController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @DeleteMapping("/kb-sources/{id}")
+    public ResponseEntity<?> deleteSource(@PathVariable Integer id) {
+        Optional<KbSource> sourceOpt = sourceRepo.findById(id);
+        if (sourceOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        KbSource source = sourceOpt.get();
+        // 1. 删除 Milvus 中的向量
+        milvusService.deleteKbBySourceId(id);
+        // 2. 删除数据库中的记录
+        sourceRepo.delete(source);
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("sourceId", id);
+        result.put("name", source.getName());
+        result.put("message", "Source and related data deleted successfully");
+        return ResponseEntity.ok(result);
+    }
+
     // KB Sync
     @PostMapping("/kb-sync")
     public ResponseEntity<Map<String, Object>> syncKb(@RequestBody SyncRequest request) {
@@ -88,6 +111,94 @@ public class AdminController {
             return ResponseEntity.ok(articleRepo.findBySourceId(sourceId));
         }
         return ResponseEntity.ok(articleRepo.findAll());
+    }
+
+    @PostMapping("/kb-articles")
+    public ResponseEntity<Map<String, Object>> createArticle(@RequestBody CreateArticleRequest request) {
+        try {
+            // 1. 验证 source 存在
+            KbSource source = sourceRepo.findById(request.sourceId())
+                    .orElseThrow(() -> new RuntimeException("Source not found: " + request.sourceId()));
+
+            // 2. 创建文章
+            KbArticle article = new KbArticle();
+            article.setSourceId(request.sourceId());
+            article.setTitle(request.title());
+            article.setUrl(request.url());
+            article.setBodyText(request.bodyText());
+            article.setHash(String.valueOf(System.currentTimeMillis())); // 简单 hash
+            article.setCreatedAt(LocalDateTime.now());
+            article.setUpdatedAt(LocalDateTime.now());
+            article = articleRepo.save(article);
+
+            // 3. 创建分块（简单的单分块策略）
+            KbChunk chunk = new KbChunk();
+            chunk.setArticleId(article.getId());
+            chunk.setChunkNo(0);
+            // 组合标题和正文
+            String chunkText = request.title() + " " + request.bodyText();
+            chunk.setChunkText(chunkText);
+            chunk.setCreatedAt(LocalDateTime.now());
+            chunk = chunkRepo.save(chunk);
+
+            // 4. 生成向量并插入 Milvus
+            List<Float> embedding = ollamaClient.embed(chunkText);
+            var vectorRow = new com.atome.bot.model.MilvusVectorRow(
+                    chunk.getId(),
+                    embedding,
+                    article.getId(),
+                    request.sourceId()
+            );
+            milvusService.insertKbChunks(Collections.singletonList(vectorRow));
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("articleId", article.getId());
+            result.put("chunkId", chunk.getId());
+            result.put("title", article.getTitle());
+            result.put("message", "Article created and synced to vector database");
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("error", e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    @DeleteMapping("/kb-articles/{id}")
+    public ResponseEntity<Map<String, Object>> deleteArticle(@PathVariable Long id) {
+        return articleRepo.findById(id)
+                .map(article -> {
+                    Integer sourceId = article.getSourceId();
+                    
+                    // 1. 获取该文章的所有 chunks
+                    List<KbChunk> chunks = chunkRepo.findByArticleId(id);
+                    
+                    // 2. 从 Milvus 中删除这些 chunks 的向量
+                    for (KbChunk chunk : chunks) {
+                        try {
+                            milvusService.deleteKbChunk(chunk.getId());
+                        } catch (Exception e) {
+                            System.err.println("⚠️ 删除 Milvus chunk " + chunk.getId() + " 失败: " + e.getMessage());
+                        }
+                    }
+                    
+                    // 3. 删除数据库中的 chunks
+                    chunkRepo.deleteAll(chunks);
+                    
+                    // 4. 删除文章
+                    articleRepo.delete(article);
+                    
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("success", true);
+                    result.put("articleId", id);
+                    result.put("chunksDeleted", chunks.size());
+                    result.put("message", "Article and associated data deleted successfully");
+                    return ResponseEntity.ok(result);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
     @GetMapping("/intents")
     public ResponseEntity<List<IntentConfig>> listIntents() {
@@ -150,7 +261,24 @@ public class AdminController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    public record SyncRequest(Integer sourceId, boolean rebuild) {}
+    @DeleteMapping("/overrides/{id}")
+    public ResponseEntity<Map<String, Object>> deleteOverride(@PathVariable Long id) {
+        return overrideRepo.findById(id)
+                .map(existing -> {
+                    // 1. 从 Milvus 中删除向量
+                    milvusService.deleteOverride(id);
+                    
+                    // 2. 从数据库中删除
+                    overrideRepo.delete(existing);
+                    
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("success", true);
+                    result.put("overrideId", id);
+                    result.put("message", "Override deleted successfully");
+                    return ResponseEntity.ok(result);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
 
     // 临时接口：为手动插入的数据生成向量（解决爬虫403问题）
     @PostMapping("/kb-reindex-manual")
@@ -213,4 +341,7 @@ public class AdminController {
             ));
         }
     }
+
+    public record SyncRequest(Integer sourceId, boolean rebuild) {}
+    public record CreateArticleRequest(Integer sourceId, String title, String url, String bodyText) {}
 }

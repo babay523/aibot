@@ -29,6 +29,12 @@
           >
             {{ item.active ? '禁用' : '启用' }}
           </button>
+          <button 
+            @click="deleteItem(item)" 
+            class="btn-delete"
+          >
+            删除
+          </button>
         </div>
       </div>
     </div>
@@ -71,9 +77,24 @@ export default {
       }
     }
 
+    const deleteItem = async (item) => {
+      if (!confirm(`确定要删除这条纠错规则吗？\n\n问题：${item.questionText.substring(0, 50)}...`)) {
+        return
+      }
+      
+      try {
+        await adminAPI.deleteOverride(item.id)
+        // 从列表中移除
+        overrides.value = overrides.value.filter(o => o.id !== item.id)
+        alert('删除成功')
+      } catch (error) {
+        alert('删除失败: ' + error.message)
+      }
+    }
+
     onMounted(loadOverrides)
 
-    return { overrides, formatTime, toggleActive }
+    return { overrides, formatTime, toggleActive, deleteItem }
   }
 }
 </script>
